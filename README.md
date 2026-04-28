@@ -1,82 +1,109 @@
-# 🏠 House Price Prediction using Elastic Net Regression
+# House Price Prediction Application
 
-> A machine learning project focused on maximizing regression performance through advanced feature engineering, where **Elastic Net outperformed more complex ensemble models**.
+Production-style refactor of the Kaggle House Prices regression project. The application keeps the original project direction: custom feature engineering plus Elastic Net regression on a log-transformed `SalePrice` target.
 
----
+## Project Structure
 
-## 🎯 Project Goal
+```text
+.
+├── data/                  # Kaggle train/test CSV files
+├── src/
+│   ├── __init__.py
+│   ├── preprocessing.py   # reusable preprocessing + feature engineering
+│   ├── train.py           # training entry point
+│   └── predict.py         # inference helpers + CLI
+├── models/
+│   └── model.pkl          # saved model artifact after training
+├── app/
+│   ├── main.py            # FastAPI app
+│   └── streamlit_app.py   # Streamlit frontend
+├── requirements.txt
+└── README.md
+```
 
-The primary objective of this project is not just to predict house prices, but to **achieve the best possible regression performance** through:
+## What The Pipeline Does
 
-- Careful **feature engineering**
-- Systematic **model selection**
-- Effective use of **regularization techniques**
+- adds engineered features from the original notebooks
+- aligns raw input columns between training and inference
+- imputes missing numerical values with the median
+- imputes missing categorical values with `"Missing"`
+- log-transforms highly skewed numeric predictors
+- one-hot encodes categorical variables
+- scales numeric features
+- trains Elastic Net on `log1p(SalePrice)`
 
-Unlike typical approaches that rely heavily on complex ensemble models, this project explores whether a well-prepared dataset can allow simpler models to perform competitively—or even better.
+The saved artifact contains the full sklearn pipeline, so inference uses the exact same preprocessing logic as training.
 
-The final results show that **Elastic Net Regression achieved superior performance**, highlighting the impact of strong feature engineering and proper handling of multicollinearity.
+## Installation
 
-## 📊 Dataset Overview
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-- **Source:** Kaggle Housing Dataset *(https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/overview)*
-- **Number of Samples:** *[insert number]*
-- **Number of Features:** *[insert number]*
-- **Target Variable:** `SalePrice`
+## Train The Model
 
-### 🧾 Data Characteristics
+```bash
+python -m src.train --data-path data/train.csv --model-path models/model.pkl
+```
 
-- The dataset contains a mix of **numerical and categorical features**
-- Presence of **missing values** in several columns
-- The target variable (`SalePrice`) is **right-skewed**, requiring transformation
-- Some features show **strong multicollinearity**, making regularization important
+This command:
 
----
+- loads raw training data
+- runs cross-validated Elastic Net tuning
+- trains the final model on the full dataset
+- saves the artifact to `models/model.pkl`
 
-## 🔍 Exploratory Data Analysis (EDA)
+## Run A Prediction From The CLI
 
-### 📈 Target Variable Distribution
+```bash
+python -m src.predict --input '{"OverallQual": 7, "GrLivArea": 1710, "GarageCars": 2, "TotalBsmtSF": 856}'
+```
 
-Understanding the distribution of the target variable is critical for regression performance.
+The script accepts either an inline JSON object or a path to a JSON file and returns a predicted sale price.
 
-#### Before Transformation
-![Target Distribution Before](images/target_distribution_before.png)
+## Run The FastAPI Service
 
-- The distribution is **heavily right-skewed**
-- This can negatively impact model performance, especially for linear models
+```bash
+uvicorn app.main:app --reload
+```
 
-#### After Log Transformation
-![Target Distribution After](images/target_distribution_after.png)
+Prediction endpoint:
 
-- Applying a **log transformation** results in a more **normal distribution**
-- This improves model stability and prediction accuracy
+```http
+POST /predict
+Content-Type: application/json
 
----
+{
+  "OverallQual": 7,
+  "GrLivArea": 1710,
+  "GarageCars": 2,
+  "GarageArea": 548,
+  "TotalBsmtSF": 856,
+  "FullBath": 2,
+  "YearBuilt": 2003,
+  "Neighborhood": "CollgCr"
+}
+```
 
-### 🔥 Correlation Heatmap
+Response:
 
-![Correlation Heatmap](images/correlation_heatmap.png)
+```json
+{
+  "predicted_price": 208734.41
+}
+```
 
-- Strong correlations observed between:
-  - `OverallQual` and `SalePrice`
-  - `GrLivArea` and `SalePrice`
-- Presence of **multicollinearity** among features
-- Justifies the use of **Elastic Net regularization**, which handles correlated predictors effectively
+## Run The Streamlit App
 
----
+```bash
+streamlit run app/streamlit_app.py
+```
 
-### 📉 Feature Relationships
+The Streamlit UI exposes a small set of the most influential features and relies on the trained pipeline to impute the rest.
 
-#### Example: Ground Living Area vs Sale Price
-![GrLivArea vs SalePrice](images/grlivarea_vs_price.png)
+## Notes
 
-- Clear **positive relationship** between living area and price
-- A few **extreme outliers** detected and removed during preprocessing
-
----
-
-### 🧠 Key EDA Takeaways
-
-- Log transformation of the target significantly improves distribution
-- Several features have strong predictive power
-- Multicollinearity is present → supports use of **regularized linear models**
-- Outlier handling is necessary for robust performance
+- On this macOS filesystem, `Data/` and `data/` resolve to the same directory, so the code uses `data/...` paths while remaining compatible with the existing folder.
+- The notebook files are still present for reference, but training and inference should now go through the Python modules in `src/`.
